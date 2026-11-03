@@ -1,0 +1,6 @@
+# Compilados y carpetas del IDE
+target/
+nbproject/private/
+.idea/
+*.iml
+*.log
