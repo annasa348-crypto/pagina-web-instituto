@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Notas y asistencias</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="bg-light">
+
+  <nav class="navbar navbar-dark bg-primary px-3">
+    <span class="navbar-brand mb-0 h1">Instituto</span>
+    <a href="dashboard.html" class="btn btn-light btn-sm">Volver al panel</a>
+  </nav>
+
+  <div class="container mt-4">
+    <h4 class="mb-3">Notas y asistencias</h4>
+
+    <div class="mb-3">
+      <label class="form-label">Curso</label>
+      <select id="selCurso" class="form-select"></select>
+    </div>
+
+    <div id="mensaje" class="mb-3"></div>
+
+    <ul class="nav nav-tabs mb-3">
+      <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tabNotas">Notas</button></li>
+      <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabAsist">Asistencia</button></li>
+    </ul>
+
+    <div class="tab-content">
+
+      <!-- NOTAS -->
+      <div class="tab-pane fade show active" id="tabNotas">
+        <div class="card shadow-sm mb-3">
+          <div class="card-body">
+            <h6>Nueva evaluación</h6>
+            <form id="formEval" novalidate>
+              <div class="row g-2">
+                <div class="col-md-3">
+                  <input id="evFecha" type="date" class="form-control" required>
+                </div>
+                <div class="col-md-3">
+                  <select id="evTipo" class="form-select" required>
+                    <option value="">Tipo...</option>
+                    <option>PARCIAL</option><option>TP</option><option>FINAL</option>
+                  </select>
+                </div>
+                <div class="col-md-4">
+                  <input id="evDesc" class="form-control" placeholder="Descripción" required>
+                </div>
+                <div class="col-md-2">
+                  <button class="btn btn-primary w-100">Crear</button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        <label class="form-label">Evaluación</label>
+        <select id="selEval" class="form-select mb-3"></select>
+
+        <div class="table-responsive">
+          <table class="table table-striped bg-white shadow-sm">
+            <thead class="table-dark"><tr><th>Alumno</th><th>DNI</th><th style="width:140px">Nota (1 a 10)</th></tr></thead>
+            <tbody id="tablaNotas"></tbody>
+          </table>
+        </div>
+        <button id="btnGuardarNotas" class="btn btn-primary">Guardar notas</button>
+      </div>
+
+      <!-- ASISTENCIA -->
+      <div class="tab-pane fade" id="tabAsist">
+        <label class="form-label">Fecha</label>
+        <input id="asFecha" type="date" class="form-control mb-3" style="max-width:220px">
+
+        <div class="table-responsive">
+          <table class="table table-striped bg-white shadow-sm">
+            <thead class="table-dark"><tr><th>Alumno</th><th>DNI</th><th>Presente</th></tr></thead>
+            <tbody id="tablaAsist"></tbody>
+          </table>
+        </div>
+        <button id="btnGuardarAsist" class="btn btn-primary">Guardar asistencia</button>
+      </div>
+
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    // Seguridad: solo ADMINISTRADOR y DOCENTE
+    const sesion = JSON.parse(sessionStorage.getItem("sesion"));
+    if (!sesion || !["ADMINISTRADOR", "DOCENTE"].includes(sesion.rol)) {
+      window.location.href = "index.html";
+    }
+
+    // Datos simulados
+    const alumnos = JSON.parse(localStorage.getItem("alumnos")) || [
+      { id: 1, dni: "40123456", apellido: "Gómez", nombre: "Lucía" },
+      { id: 2, dni: "41234567", apellido: "Pérez", nombre: "Martín" },
+      { id: 3, dni: "42345678", apellido: "Ruiz",  nombre: "Sofía" }
+    ];
+    const cursos = [
+      { id: 1, nombre: "Inglés A1 (2026)" },
+      { id: 2, nombre: "Programación (2026)" },
+      { id: 3, nombre: "Inglés A2 (2027)" }
+    ];
+    // RN09: cursos asignados a cada docente
+    const asignaciones = { docente: [1, 2] };
+
+    const inscripciones = JSON.parse(localStorage.getItem("inscripciones")) || [];
+    let evaluaciones = JSON.parse(localStorage.getItem("evaluaciones")) || [];
+    let calificaciones = JSON.parse(localStorage.getItem("calificaciones")) || [];
+    let asistencias = JSON.parse(localStorage.getItem("asistencias")) || [];
+
+    const misCursos = sesion.rol === "ADMINISTRADOR"
+      ? cursos
+      : cursos.filter(c => (asignaciones[sesion.usuario] || []).includes(c.id));
+
+    const hoy = new Date().toLocaleDateString("sv-SE"); // formato AAAA-MM-DD
+
+    const selCurso = document.getElementById("selCurso");
+    const selEval = document.getElementById("selEval");
+    const asFecha = document.getElementById("asFecha");
+    asFecha.value = hoy;
+    asFecha.max = hoy;
+
+    function mensaje(texto, tipo) {
+      document.getElementById("mensaje").innerHTML =
+        texto ? `<div class="alert alert-${tipo} mb-0">${texto}</div>` : "";
+    }
+
+    function cursoActual() { return Number(selCurso.value); }
+
+    function alumnosDelCurso() {
+      return inscripciones
+        .filter(i => i.cursoId === cursoActual())
+        .map(i => alumnos.find(a => a.id === i.alumnoId))
+        .filter(Boolean);
+    }
+
+    // RN09: verifica que el curso sea del docente
+    function cursoPermitido() {
+      return misCursos.some(c => c.id === cursoActual());
+    }
+
+    function cargarCursos() {
+      selCurso.innerHTML = "";
+      misCursos.forEach(c => selCurso.innerHTML += `<option value="${c.id}">${c.nombre}</option>`);
+      if (misCursos.length === 0) {
+        mensaje("No tenés cursos asignados.", "warning");
+      }
+    }
+
+    function cargarEvaluaciones() {
+      selEval.innerHTML = "";
+      evaluaciones.filter(e => e.cursoId === cursoActual()).forEach(e => {
+        selEval.innerHTML += `<option value="${e.id}">${e.fecha} - ${e.tipo} - ${e.descripcion}</option>`;
+      });
+      if (!selEval.options.length) {
+        selEval.innerHTML = '<option value="">No hay evaluaciones en este curso</option>';
+      }
+    }
+
+    function mostrarNotas() {
+      const tbody = document.getElementById("tablaNotas");
+      tbody.innerHTML = "";
+      const lista = alumnosDelCurso();
+      if (lista.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="3" class="text-center text-muted">No hay alumnos inscriptos en este curso. Inscribilos primero.</td></tr>';
+        return;
+      }
+      const evalId = Number(selEval.value);
+      lista.forEach(a => {
+        const cal = calificaciones.find(c => c.evaluacionId === evalId && c.alumnoId === a.id);
+        tbody.innerHTML += `
+          <tr>
+            <td>${a.apellido}, ${a.nombre}</td>
+            <td>${a.dni}</td>
+            <td><input type="number" min="1" max="10" step="0.1" class="form-control nota" data-alumno="${a.id}" value="${cal ? cal.nota : ""}"></td>
+          </tr>`;
+      });
+    }
+
+    function mostrarAsistencia() {
+      const tbody = document.getElementById("tablaAsist");
+      tbody.innerHTML = "";
+      const lista = alumnosDelCurso();
+      const btn = document.getElementById("btnGuardarAsist");
+      btn.disabled = false;
+
+      if (lista.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="3" class="text-center text-muted">No hay alumnos inscriptos en este curso.</td></tr>';
+        return;
+      }
+
+      const yaCargada = asistencias.some(x => x.cursoId === cursoActual() && x.fecha === asFecha.value);
+      if (yaCargada) {
+        mensaje("Ya hay asistencia registrada para esa fecha.", "info");
+        btn.disabled = true;
+      }
+
+      lista.forEach(a => {
+        const reg = asistencias.find(x => x.cursoId === cursoActual() && x.fecha === asFecha.value && x.alumnoId === a.id);
+        const presente = reg ? reg.presente : true;
+        tbody.innerHTML += `
+          <tr>
+            <td>${a.apellido}, ${a.nombre}</td>
+            <td>${a.dni}</td>
+            <td><input type="checkbox" class="form-check-input presente" data-alumno="${a.id}" ${presente ? "checked" : ""} ${yaCargada ? "disabled" : ""}></td>
+          </tr>`;
+      });
+    }
+
+    function refrescar() {
+      mensaje("", "");
+      cargarEvaluaciones();
+      mostrarNotas();
+      mostrarAsistencia();
+    }
+
+    // Crear evaluación
+    document.getElementById("formEval").addEventListener("submit", function (e) {
+      e.preventDefault();
+      if (!cursoPermitido()) { mensaje("No tenés asignado este curso.", "danger"); return; }
+      if (!this.checkValidity()) { this.classList.add("was-validated"); return; }
+
+      const nuevoId = evaluaciones.length ? Math.max(...evaluaciones.map(x => x.id)) + 1 : 1;
+      evaluaciones.push({
+        id: nuevoId,
+        cursoId: cursoActual(),
+        fecha: document.getElementById("evFecha").value,
+        tipo: document.getElementById("evTipo").value,
+        descripcion: document.getElementById("evDesc").value.trim()
+      });
+      localStorage.setItem("evaluaciones", JSON.stringify(evaluaciones));
+      this.reset();
+      this.classList.remove("was-validated");
+      cargarEvaluaciones();
+      selEval.value = nuevoId;
+      mostrarNotas();
+      mensaje("Evaluación creada.", "success");
+    });
+
+    // Guardar notas
+    document.getElementById("btnGuardarNotas").addEventListener("click", function () {
+      if (!cursoPermitido()) { mensaje("No tenés asignado este curso.", "danger"); return; } // RN09
+      const evalId = Number(selEval.value);
+      if (!evalId) { mensaje("Primero creá o elegí una evaluación.", "danger"); return; }
+
+      const inputs = document.querySelectorAll(".nota");
+      const nuevas = [];
+      for (const inp of inputs) {
+        if (inp.value === "") continue;
+        const nota = Number(inp.value);
+        if (isNaN(nota) || nota < 1 || nota > 10) { // RN10
+          mensaje("Las notas deben estar entre 1 y 10.", "danger");
+          return;
+        }
+        nuevas.push({ alumnoId: Number(inp.dataset.alumno), nota: nota });
+      }
+      if (nuevas.length === 0) { mensaje("No cargaste ninguna nota.", "danger"); return; }
+
+      nuevas.forEach(n => {
+        const existente = calificaciones.find(c => c.evaluacionId === evalId && c.alumnoId === n.alumnoId);
+        if (existente) {
+          existente.nota = n.nota;
+        } else {
+          const nuevoId = calificaciones.length ? Math.max(...calificaciones.map(c => c.id)) + 1 : 1;
+          calificaciones.push({ id: nuevoId, evaluacionId: evalId, alumnoId: n.alumnoId, nota: n.nota });
+        }
+      });
+      localStorage.setItem("calificaciones", JSON.stringify(calificaciones));
+      mensaje("Notas guardadas correctamente.", "success");
+    });
+
+    // Guardar asistencia
+    document.getElementById("btnGuardarAsist").addEventListener("click", function () {
+      if (!cursoPermitido()) { mensaje("No tenés asignado este curso.", "danger"); return; } // RN09
+
+      const fecha = asFecha.value;
+      if (!fecha) { mensaje("Elegí una fecha.", "danger"); return; }
+      if (fecha > hoy) { mensaje("No se puede registrar asistencia con fecha futura.", "danger"); return; } // RN11
+      if (asistencias.some(x => x.cursoId === cursoActual() && x.fecha === fecha)) { // RN11
+        mensaje("Ya hay asistencia registrada para esa fecha.", "danger");
+        return;
+      }
+
+      document.querySelectorAll(".presente").forEach(chk => {
+        const nuevoId = asistencias.length ? Math.max(...asistencias.map(x => x.id)) + 1 : 1;
+        asistencias.push({
+          id: nuevoId,
+          cursoId: cursoActual(),
+          alumnoId: Number(chk.dataset.alumno),
+          fecha: fecha,
+          presente: chk.checked
+        });
+      });
+      localStorage.setItem("asistencias", JSON.stringify(asistencias));
+      mensaje("Asistencia guardada correctamente.", "success");
+      mostrarAsistencia();
+    });
+
+    selCurso.addEventListener("change", refrescar);
+    selEval.addEventListener("change", mostrarNotas);
+    asFecha.addEventListener("change", function () { mensaje("", ""); mostrarAsistencia(); });
+
+    cargarCursos();
+    refrescar();
+  </script>
+</body>
+</html>

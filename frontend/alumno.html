@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mi situación académica</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="bg-light">
+
+  <nav class="navbar navbar-dark bg-primary px-3">
+    <span class="navbar-brand mb-0 h1">Instituto</span>
+    <a href="dashboard.html" class="btn btn-light btn-sm">Volver al panel</a>
+  </nav>
+
+  <div class="container mt-4">
+    <h4 class="mb-1">Mi situación académica</h4>
+    <p class="text-muted" id="datosAlumno"></p>
+
+    <div class="row g-3 mb-4">
+      <div class="col-md-4"><div class="card shadow-sm"><div class="card-body">
+        <div class="text-muted small">Promedio general</div><div class="fs-4" id="promedio">-</div>
+      </div></div></div>
+      <div class="col-md-4"><div class="card shadow-sm"><div class="card-body">
+        <div class="text-muted small">Asistencia</div><div class="fs-4" id="porcAsist">-</div>
+      </div></div></div>
+      <div class="col-md-4"><div class="card shadow-sm"><div class="card-body">
+        <div class="text-muted small">Cursos inscriptos</div><div class="fs-4" id="cantCursos">0</div>
+      </div></div></div>
+    </div>
+
+    <h5>Mis cursos</h5>
+    <div class="table-responsive mb-4">
+      <table class="table table-striped bg-white shadow-sm">
+        <thead class="table-dark"><tr><th>Curso</th><th>Ciclo</th><th>Fecha de inscripción</th></tr></thead>
+        <tbody id="tablaCursos"></tbody>
+      </table>
+    </div>
+
+    <h5>Mis calificaciones</h5>
+    <div class="table-responsive mb-4">
+      <table class="table table-striped bg-white shadow-sm">
+        <thead class="table-dark"><tr><th>Curso</th><th>Fecha</th><th>Tipo</th><th>Descripción</th><th>Nota</th></tr></thead>
+        <tbody id="tablaNotas"></tbody>
+      </table>
+    </div>
+
+    <h5>Mi asistencia</h5>
+    <div class="table-responsive">
+      <table class="table table-striped bg-white shadow-sm">
+        <thead class="table-dark"><tr><th>Fecha</th><th>Curso</th><th>Estado</th></tr></thead>
+        <tbody id="tablaAsist"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    // Seguridad: solo ALUMNO (admin y secretaría pueden mirarlo para probar)
+    const sesion = JSON.parse(sessionStorage.getItem("sesion"));
+    if (!sesion) {
+      window.location.href = "index.html";
+    }
+
+    // En la simulación, el usuario "alumno" es el alumno con id 1
+    const ALUMNO_ID = 1;
+
+    const alumnos = JSON.parse(localStorage.getItem("alumnos")) || [
+      { id: 1, dni: "40123456", apellido: "Gómez", nombre: "Lucía" }
+    ];
+    const cursos = [
+      { id: 1, nombre: "Inglés A1", cicloId: 1 },
+      { id: 2, nombre: "Programación", cicloId: 1 },
+      { id: 3, nombre: "Inglés A2", cicloId: 2 }
+    ];
+    const ciclos = [{ id: 1, anio: 2026 }, { id: 2, anio: 2027 }];
+
+    const inscripciones = (JSON.parse(localStorage.getItem("inscripciones")) || []).filter(i => i.alumnoId === ALUMNO_ID);
+    const evaluaciones = JSON.parse(localStorage.getItem("evaluaciones")) || [];
+    const calificaciones = (JSON.parse(localStorage.getItem("calificaciones")) || []).filter(c => c.alumnoId === ALUMNO_ID);
+    const asistencias = (JSON.parse(localStorage.getItem("asistencias")) || []).filter(a => a.alumnoId === ALUMNO_ID);
+
+    const nombreCurso = id => (cursos.find(c => c.id === id) || {}).nombre || "-";
+    const vacio = (cols, texto) => `<tr><td colspan="${cols}" class="text-center text-muted">${texto}</td></tr>`;
+
+    const alumno = alumnos.find(a => a.id === ALUMNO_ID);
+    document.getElementById("datosAlumno").textContent =
+      alumno ? `${alumno.apellido}, ${alumno.nombre} - DNI ${alumno.dni}` : "";
+
+    // Cursos
+    document.getElementById("cantCursos").textContent = inscripciones.length;
+    const tc = document.getElementById("tablaCursos");
+    tc.innerHTML = inscripciones.length ? "" : vacio(3, "Todavía no estás inscripto en ningún curso.");
+    inscripciones.forEach(i => {
+      const curso = cursos.find(c => c.id === i.cursoId);
+      const ciclo = ciclos.find(c => c.id === i.cicloId);
+      tc.innerHTML += `<tr><td>${curso ? curso.nombre : "-"}</td><td>${ciclo ? ciclo.anio : "-"}</td><td>${i.fecha}</td></tr>`;
+    });
+
+    // Notas
+    const tn = document.getElementById("tablaNotas");
+    tn.innerHTML = calificaciones.length ? "" : vacio(5, "Todavía no tenés calificaciones.");
+    let suma = 0;
+    calificaciones.forEach(c => {
+      const ev = evaluaciones.find(e => e.id === c.evaluacionId);
+      if (!ev) return;
+      suma += c.nota;
+      tn.innerHTML += `
+        <tr>
+          <td>${nombreCurso(ev.cursoId)}</td>
+          <td>${ev.fecha}</td>
+          <td>${ev.tipo}</td>
+          <td>${ev.descripcion}</td>
+          <td><span class="badge ${c.nota >= 6 ? "bg-success" : "bg-danger"}">${c.nota}</span></td>
+        </tr>`;
+    });
+    if (calificaciones.length) {
+      document.getElementById("promedio").textContent = (suma / calificaciones.length).toFixed(2);
+    }
+
+    // Asistencia
+    const ta = document.getElementById("tablaAsist");
+    ta.innerHTML = asistencias.length ? "" : vacio(3, "Todavía no hay asistencias registradas.");
+    asistencias.forEach(a => {
+      ta.innerHTML += `
+        <tr>
+          <td>${a.fecha}</td>
+          <td>${nombreCurso(a.cursoId)}</td>
+          <td><span class="badge ${a.presente ? "bg-success" : "bg-danger"}">${a.presente ? "PRESENTE" : "AUSENTE"}</span></td>
+        </tr>`;
+    });
+    if (asistencias.length) {
+      const presentes = asistencias.filter(a => a.presente).length;
+      document.getElementById("porcAsist").textContent = Math.round(presentes * 100 / asistencias.length) + "%";
+    }
+  </script>
+</body>
+</html>
